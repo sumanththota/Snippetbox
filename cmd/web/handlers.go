@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"text/template"
+
+	"github.com/sumanththota/snippetbox/pkg/models"
 )
 
 //create a handler named home
@@ -17,24 +18,14 @@ func(app *application) home(w http.ResponseWriter, r *http.Request){
 		return
 	}
 
-
-	files := []string{
-		"ui/html/base.layout.html",
-		"ui/html/home.page.html",
-		"ui/html/footer.partial.html",
-	}
-
-	ts, err := template.ParseFiles(files...)
+	s, err := app.snippets.Latest()
 	if err != nil {
-		app.errorLog.Println(err.Error())
-		app.serverError(w,err)
+		app.serverError(w, err)
 		return
 	}
-	err = ts.ExecuteTemplate(w, "base", nil)
-	if err != nil {
-		app.errorLog.Println(err.Error())
-		app.serverError(w, err)
-	}
+	app.render(w, r, "home.page.html", &templateData{Snippets: s})
+
+	
 }
 
 func(app *application) showSnippet(w http.ResponseWriter, r *http.Request){
@@ -43,8 +34,19 @@ func(app *application) showSnippet(w http.ResponseWriter, r *http.Request){
 		app.notFound(w)
 		return
 	}
-	fmt.Fprintf(w, "Display a specific snippet with ID %d...", id)
+	s, err := app.snippets.Get(id)
+	if err == models.ErrNoRecord {
+		app.notFound(w)
+		return
+	} else if err != nil {
+		app.serverError(w, err)
+		return
+	}
 
+	app.render(w, r, "show.page.html", &templateData{Snippet: s})
+
+
+	
 }
 
 func(app *application) createSnippet(w http.ResponseWriter, r *http.Request){
@@ -53,6 +55,14 @@ func(app *application) createSnippet(w http.ResponseWriter, r *http.Request){
 		app.clientError(w, http.StatusMethodNotAllowed)
 		return
 	}
+	title := "O snail"
+	content := "O snail\nClimb Mount Fuji,\nBut slowly, slowly!\n\n– Kobayashi"
+	expires := "7"
+	id, err := app.snippets.Insert(title, content, expires)
+	if err != nil {
+		app.serverError(w, err)
+	}
+	http.Redirect(w, r, fmt.Sprintf("/snippet?id=%d", id), http.StatusSeeOther)
 
 	w.Write([]byte("create a snippet"))
 }

@@ -5,21 +5,24 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	 "html/template"
 	"os"
-
+	"github.com/sumanththota/snippetbox/pkg/models/mysql"
 	_ "github.com/go-sql-driver/mysql"
 )
 
 type application struct{
 	errorLog *log.Logger
 	infoLog *log.Logger
+	snippets *mysql.SnippetModel
+	templateCache map[string]*template.Template
 }
 
 func main(){
 	addr := flag.String("addr", ":4000", "HTTP network address")
 	dsn := flag.String(
 		"dsn",
-		"web:pass@tcp(localhost:3306)/snippetbox?parseTime=true",
+		"web:pass@/snippetbox?parseTime=true",
 		"MySQL data source name",
 	)
 	flag.Parse()	
@@ -36,24 +39,19 @@ func main(){
 
 	defer db.Close()
 
+	templateCache, err := newTemplateCache("./ui/html/")
+	if err != nil {
+		errorLog.Fatal(err)
+	}
 
 	// initlizing a new instance of applicaiton containing the dependencies
 	app := &application{
 		errorLog: errorLog,
 		infoLog: infoLog,
+		snippets: &mysql.SnippetModel{DB: db},
+		templateCache: templateCache,
+
 	}
-
-	//establish a router
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", app.home)
-	mux.HandleFunc("/snippet", app.showSnippet)
-	mux.HandleFunc("/snippet/create", app.createSnippet)
-
-	// to server the files into the ui
-
-	fileServer := http.FileServer(http.Dir("./ui/static/"))
-	mux.Handle("/static/", http.StripPrefix("/static", fileServer))
 
 	//creating a new server struct for configuring to our server
 	srv := &http.Server{
@@ -61,8 +59,6 @@ func main(){
 		ErrorLog: errorLog,
 		Handler: app.routes(),
 	}
-	
-
 
 	// start the webserver
 	infoLog.Printf("Starting the server on %s", *addr)
